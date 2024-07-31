@@ -65,9 +65,11 @@ flutter:
   assets:
     - assets/cloudy.png
     - assets/sunny.png
+    - assets/sunny2.png
     - assets/snowy.png
     - assets/rainy.png
     - assets/foggy.png
+    - assets/cloudy2.png
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/assets-and-images/#resolution-aware
