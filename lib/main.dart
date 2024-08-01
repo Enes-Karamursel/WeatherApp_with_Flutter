@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:intl/intl.dart';
+
 
 void main() {
   runApp(
@@ -162,16 +164,28 @@ class _AddCityDialogState extends State<AddCityDialog> {
 
 class City {
   final String name;
-  final int temperature;
+  final int temperature; // Celsius as int
   final String weatherDescription;
-  final String time;
+  final int humidity;
+  final double windSpeed;
+  final String sunrise;
+  final String sunset;
 
-  City(this.name, this.temperature, this.weatherDescription, this.time);
+  City(
+      this.name,
+      this.temperature,
+      this.weatherDescription,
+      this.humidity,
+      this.windSpeed,
+      this.sunrise,
+      this.sunset,
+      );
 
   int toFahrenheit() {
     return ((temperature * 9 / 5) + 32).round();
   }
 }
+
 
 class CityWeatherProvider with ChangeNotifier {
   List<City> _cities = [];
@@ -190,7 +204,15 @@ class CityWeatherProvider with ChangeNotifier {
   Future<bool> addCity(String cityName) async {
     final cityData = await _fetchCityWeather(cityName);
     if (cityData != null) {
-      final city = City(cityName, cityData['temperature'], cityData['description'], cityData['time']);
+      final city = City(
+        cityName,
+        cityData['temperature'],
+        cityData['description'],
+        cityData['humidity'],
+        cityData['windSpeed'],
+        cityData['sunrise'],
+        cityData['sunset'],
+      );
       _cities.add(city);
       notifyListeners();
       return true;
@@ -206,11 +228,21 @@ class CityWeatherProvider with ChangeNotifier {
     }
 
     final weatherData = json.decode(response.body);
-    final temperature = weatherData['main']['temp'].toInt();
+    final temperature = weatherData['main']['temp'].toInt(); // Convert to int
     final description = weatherData['weather'][0]['description'];
-    final time = DateTime.now().toString();
+    final humidity = weatherData['main']['humidity'];
+    final windSpeed = weatherData['wind']['speed'].toDouble(); // Convert to double
+    final sunrise = DateTime.fromMillisecondsSinceEpoch(weatherData['sys']['sunrise'] * 1000).toLocal().toString();
+    final sunset = DateTime.fromMillisecondsSinceEpoch(weatherData['sys']['sunset'] * 1000).toLocal().toString();
 
-    return {'temperature': temperature, 'description': description, 'time': time};
+    return {
+      'temperature': temperature,
+      'description': description,
+      'humidity': humidity,
+      'windSpeed': windSpeed,
+      'sunrise': sunrise,
+      'sunset': sunset
+    };
   }
 
   void removeCity(int index) {
@@ -291,22 +323,12 @@ class WeatherCard extends StatelessWidget {
                 color: Colors.white,
               ),
             ),
-            const SizedBox(height: 5),
-            Text(
-              city.time,
-              style: const TextStyle(
-                fontSize: 16,
-                color: Colors.white,
-              ),
-            ),
-            const SizedBox(height: 5),
           ],
         ),
       ),
     );
   }
 }
-
 
 class WeatherDetailScreen extends StatelessWidget {
   final City city;
@@ -319,13 +341,15 @@ class WeatherDetailScreen extends StatelessWidget {
 
     switch (city.weatherDescription.toLowerCase()) {
       case 'clear sky':
-      case 'few clouds':
         backgroundImage = 'assets/sunny2.png';
         break;
       case 'rain':
       case 'shower rain':
       case 'thunderstorm':
         backgroundImage = 'assets/rainy.png';
+        break;
+      case 'few clouds':
+        backgroundImage = 'assets/few_clouds.png';
         break;
       case 'snow':
         backgroundImage = 'assets/snowy.png';
@@ -336,105 +360,209 @@ class WeatherDetailScreen extends StatelessWidget {
         break;
       case 'scattered clouds':
         backgroundImage = 'assets/cloudy2.png';
+        break;
       default:
         backgroundImage = 'assets/cloudy.png';
     }
 
+    // Format the sunrise and sunset times to show only hours and minutes
+    String formatTime(String dateTimeString) {
+      final DateTime dateTime = DateTime.parse(dateTimeString).toLocal();
+      return '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
+    }
+
     return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          '${city.name} Weather',
-          style: const TextStyle(
-            color: Colors.white,
+      body: Stack(
+        children: [
+          Container(
+            decoration: BoxDecoration(
+              image: DecorationImage(
+                image: AssetImage(backgroundImage),
+                fit: BoxFit.cover,
+              ),
+            ),
           ),
-        ),
-        backgroundColor: const Color(0xFF093DAB),
+          Positioned(
+            top: 40, // you can adjust this value according to your needs
+            left: 16,
+            child: IconButton(
+              icon: Icon(Icons.arrow_back, color: Colors.white, size: 30),
+              onPressed: () {
+                Navigator.pop(context);
+              },
+            ),
+          ),
+          Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // Derece
+                Text(
+                  '${city.temperature}°C',
+                  style: const TextStyle(
+                    fontSize: 64,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                    shadows: [
+                      Shadow(
+                        offset: Offset(2.0, 2.0),
+                        blurRadius: 5.0,
+                        color: Colors.black,
+                      ),
+                    ],
+                  ),
+                ),
+                // Hava durumu açıklaması
+                Text(
+                  city.weatherDescription,
+                  style: const TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.w400,
+                    color: Colors.white,
+                    letterSpacing: 1.2,
+                    shadows: [
+                      Shadow(
+                        offset: Offset(2.0, 2.0),
+                        blurRadius: 2.0,
+                        color: Colors.black,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+                // Şehir ismi
+                const Text('My Location',
+                  style: TextStyle(
+                    fontSize: 30,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                    letterSpacing: 1.1,
+                    shadows: [
+                      Shadow(
+                        offset: Offset(2.0, 2.0),
+                        blurRadius: 2.0,
+                        color: Colors.black,
+                      ),
+                    ],
+                  ),
+                ),
+                Text(
+                  city.name,
+                  style: const TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                    letterSpacing: 1.1,
+                    shadows: [
+                      Shadow(
+                        offset: Offset(2.0, 2.0),
+                        blurRadius: 2.0,
+                        color: Colors.black,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 80),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                  child: Column(
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(
+                            child: _buildInfoCard(
+                              context,
+                              title: 'Humidity',
+                              value: '${city.humidity}%',
+                              icon: Icons.water_drop,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: _buildInfoCard(
+                              context,
+                              title: 'Wind Speed',
+                              value: '${city.windSpeed} m/s',
+                              icon: Icons.wind_power,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(
+                            child: _buildInfoCard(
+                              context,
+                              title: 'Sunrise',
+                              value: formatTime(city.sunrise), // Format time
+                              icon: Icons.wb_sunny,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: _buildInfoCard(
+                              context,
+                              title: 'Sunset',
+                              value: formatTime(city.sunset), // Format time
+                              icon: Icons.nightlight_round,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
-      body: Container(
-        decoration: BoxDecoration(
-          image: DecorationImage(
-            image: AssetImage(backgroundImage),
-            fit: BoxFit.cover,
-          ),
-        ),
-        child: Center(
-          child: Consumer<CityWeatherProvider>(
-            builder: (context, provider, child) {
-              return Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  // Derece
-                  Text(
-                    '${provider.temperatureUnit == 'Celsius' ? city.temperature : city.toFahrenheit()}°${provider.temperatureUnit == 'Celsius' ? 'C' : 'F'}',
-                    style: const TextStyle(
-                      fontSize: 64,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                      shadows: [
-                        Shadow(
-                          offset: Offset(2.0, 2.0),
-                          blurRadius: 5.0,
-                          color: Colors.black,
-                        ),
-                      ],
-                    ),
-                  ),
-                  // Hava durumu açıklaması
-                  Text(
-                    city.weatherDescription,
-                    style: const TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.w400,
-                      color: Colors.white,
-                      letterSpacing: 1.2,
-                      shadows: [
-                        Shadow(
-                          offset: Offset(2.0, 2.0),
-                          blurRadius: 2.0,
-                          color: Colors.black,
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 140),
-                  // Şehir ismi
-                  const Text('My Location',
-                    style: TextStyle(
-                      fontSize: 30,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
-                      letterSpacing: 1.1,
-                      shadows: [
-                        Shadow(
-                          offset: Offset(2.0, 2.0),
-                          blurRadius: 2.0,
-                          color: Colors.black,
-                        ),
-                      ],
-                    ),
-                  ),
-                  Text(
-                    city.name,
-                    style: const TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
-                      letterSpacing: 1.1,
-                      shadows: [
-                        Shadow(
-                          offset: Offset(2.0, 2.0),
-                          blurRadius: 2.0,
-                          color: Colors.black,
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              );
-            },
-          ),
+    );
+  }
+
+  Widget _buildInfoCard(BuildContext context, {required String title, required String value, required IconData icon}) {
+    return Card(
+      color: Colors.white.withOpacity(0.8),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12.0),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: Colors.blueAccent, size: 40),
+            const SizedBox(height: 10),
+            Text(
+              title,
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.blueAccent,
+              ),
+            ),
+            const SizedBox(height: 5),
+            Text(
+              value,
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w400,
+                color: Colors.black,
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 }
+
+
+
+
+
+
+
