@@ -199,7 +199,7 @@ class Home extends StatelessWidget {
 class AddCityDialog extends StatefulWidget {
   final CityWeatherController controller;
 
-  AddCityDialog({super.key, required this.controller});
+  const AddCityDialog({super.key, required this.controller});
 
   @override
   _AddCityDialogState createState() => _AddCityDialogState();
@@ -269,7 +269,7 @@ class _AddCityDialogState extends State<AddCityDialog> {
 class WeatherCard extends StatelessWidget {
   final City city;
   final VoidCallback onDelete;
-  final CityWeatherController controller = Get.find(); // GetX controller'ını bul
+  final CityWeatherController controller = Get.find();
 
   WeatherCard({
     super.key,
@@ -289,6 +289,7 @@ class WeatherCard extends StatelessWidget {
       case 'shower rain':
       case 'thunderstorm':
       case 'heavy intensity rain':
+      case 'light rain':
         backgroundImage = 'assets/rainy.png';
         break;
       case 'few clouds':
@@ -390,6 +391,7 @@ class WeatherDetailScreen extends StatelessWidget {
       case 'rain':
       case 'shower rain':
       case 'thunderstorm':
+      case 'light rain':
       case 'heavy intensity rain':
         backgroundImage = 'assets/rainy.png';
         break;
@@ -424,16 +426,16 @@ class WeatherDetailScreen extends StatelessWidget {
     for (int i = 0; i < city.hourly.length; i++) {
       final hourData = city.hourly[i];
       final hour = int.parse(hourData['time'].split(':')[0]);
-      if (hour >= currentHour || next24Hours.length < 24) {
+      if (hour >= currentHour || next24Hours.length < 9) {
         next24Hours.add(hourData);
       }
-      if (next24Hours.length >= 24) break;
+      if (next24Hours.length >= 9) break;
     }
 
     // If less than 24 hours of data, wrap around to the beginning of the list
-    if (next24Hours.length < 24) {
+    if (next24Hours.length < 9) {
       for (int i = 0; i < city.hourly.length; i++) {
-        if (next24Hours.length >= 24) break;
+        if (next24Hours.length >= 9) break;
         next24Hours.add(city.hourly[i]);
       }
     }
@@ -502,7 +504,7 @@ class WeatherDetailScreen extends StatelessWidget {
                             ],
                           ),
                         ),
-                        const SizedBox(height: 40),
+                        const SizedBox(height: 30),
                         // Şehir ismi
                         const Text('My Location',
                           style: TextStyle(
@@ -676,7 +678,7 @@ class WeatherDetailScreen extends StatelessWidget {
 
   Widget _buildInfoCard(BuildContext context, {required String title, required String value, required IconData icon}) {
     return Card(
-      color: const Color.fromARGB(10, 255, 255, 255),
+      color: const Color.fromARGB(5, 255, 255, 255),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(10),
       ),
@@ -761,6 +763,8 @@ class WeatherDetailScreen extends StatelessWidget {
       case 'rain':
       case 'shower rain':
       case 'thunderstorm':
+      case 'light rain':
+      case 'heavy intensity rain':
         return Icons.beach_access;
       case 'few clouds':
       case 'scattered clouds':
