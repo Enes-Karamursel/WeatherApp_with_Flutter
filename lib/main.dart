@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   runApp(const MyApp());
@@ -43,12 +44,53 @@ class City {
   int toFahrenheit() {
     return ((temperature * 9 / 5) + 32).round();
   }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'name': name,
+      'temperature': temperature,
+      'weatherDescription': weatherDescription,
+      'humidity': humidity,
+      'windSpeed': windSpeed,
+      'sunrise': sunrise,
+      'sunset': sunset,
+      'hourly': jsonEncode(hourly),
+    };
+  }
+
+  factory City.fromMap(Map<String, dynamic> map) {
+    return City(
+      map['name'],
+      map['temperature'],
+      map['weatherDescription'],
+      map['humidity'],
+      map['windSpeed'].toDouble(),
+      map['sunrise'],
+      map['sunset'],
+      List<Map<String, dynamic>>.from(jsonDecode(map['hourly'])),
+    );
+  }
 }
 
 class CityWeatherController extends GetxController {
   var cities = <City>[].obs;
-  var temperatureUnit = ''.obs;
+  var temperatureUnit = 'Celsius'.obs;
 
+  CityWeatherController() {
+    loadCities();
+  }
+
+  void setTemperatureUnit(String unit) {
+    temperatureUnit.value = unit;
+  }
+
+  String formatTemperature(int celsius) {
+    if (temperatureUnit.value == 'Fahrenheit') {
+      return '${((celsius * 9 / 5) + 32).round()}°F';
+    } else {
+      return '$celsius°C';
+    }
+  }
 
   Future<bool> addCity(String cityName) async {
     final cityData = await _fetchCityWeather(cityName);
@@ -64,6 +106,7 @@ class CityWeatherController extends GetxController {
         cityData['hourly'] ?? [],
       );
       cities.add(city);
+      saveCities();
       return true;
     }
     return false;
@@ -71,10 +114,24 @@ class CityWeatherController extends GetxController {
 
   void removeCity(int index) {
     cities.removeAt(index);
+    saveCities();
   }
 
-  void setTemperatureUnit(String unit) {
-    temperatureUnit.value = unit;
+  Future<void> saveCities() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    List<String> cityList = cities.map((city) => jsonEncode(city.toMap())).toList();
+    prefs.setStringList('cities', cityList);
+  }
+
+  Future<void> loadCities() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    List<String>? cityList = prefs.getStringList('cities');
+    if (cityList != null) {
+      cities.value = cityList.map((cityString) {
+        Map<String, dynamic> cityMap = jsonDecode(cityString);
+        return City.fromMap(cityMap);
+      }).toList();
+    }
   }
 
   Future<Map<String, dynamic>?> _fetchCityWeather(String cityName) async {
@@ -121,6 +178,7 @@ class CityWeatherController extends GetxController {
   }
 }
 
+
 class Home extends StatelessWidget {
   const Home({super.key});
 
@@ -130,10 +188,10 @@ class Home extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Weather App', style: TextStyle(
+        title: const Text('Weather App', textAlign: TextAlign.left ,style: TextStyle(
           fontSize: 27,
           fontWeight: FontWeight.bold,
-          ),
+        ),
         ),
         actions: [
           Obx(() {
@@ -374,7 +432,6 @@ class WeatherCard extends StatelessWidget {
   }
 }
 
-
 class WeatherDetailScreen extends StatelessWidget {
   final City city;
 
@@ -382,6 +439,9 @@ class WeatherDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Obtain the controller using Get.find()
+    final CityWeatherController controller = Get.find<CityWeatherController>();
+
     String backgroundImage;
 
     switch (city.weatherDescription.toLowerCase()) {
@@ -440,8 +500,6 @@ class WeatherDetailScreen extends StatelessWidget {
       }
     }
 
-    final CityWeatherController controller = Get.find();
-
     return Scaffold(
       body: Stack(
         children: [
@@ -458,9 +516,8 @@ class WeatherDetailScreen extends StatelessWidget {
               color: Colors.black12,
             ),
           ),
-
-          SingleChildScrollView(
-            child: Center(
+          SafeArea(
+            child: SingleChildScrollView(
               child: Column(
                 children: [
                   Obx(() {
@@ -470,8 +527,7 @@ class WeatherDetailScreen extends StatelessWidget {
 
                     return Column(
                       children: [
-                        const SizedBox(height: 110),
-                        // Derece
+                        const SizedBox(height: 20),
                         Text(
                           temperature,
                           style: const TextStyle(
@@ -487,7 +543,6 @@ class WeatherDetailScreen extends StatelessWidget {
                             ],
                           ),
                         ),
-                        // Hava durumu açıklaması
                         Text(
                           city.weatherDescription,
                           style: const TextStyle(
@@ -505,7 +560,6 @@ class WeatherDetailScreen extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: 30),
-                        // Şehir ismi
                         const Text('My Location',
                           style: TextStyle(
                             fontSize: 24,
@@ -589,7 +643,6 @@ class WeatherDetailScreen extends StatelessWidget {
                                 ],
                               ),
                               const SizedBox(height: 20),
-                              // Saatlik hava durumu
                               Column(
                                 children: [
                                   const Padding(
@@ -622,6 +675,7 @@ class WeatherDetailScreen extends StatelessWidget {
                                           time: hourData['time'],
                                           temp: hourData['temp'],
                                           weather: hourData['weather'],
+                                          controller: controller, // Pass controller
                                         );
                                       },
                                     ),
@@ -660,13 +714,6 @@ class WeatherDetailScreen extends StatelessWidget {
                   fontWeight: FontWeight.bold,
                   color: Colors.white,
                   decorationColor: Colors.white,
-                  // shadows: [
-                  //   Shadow(
-                  //     offset: Offset(2.0, 2.0),
-                  //     blurRadius: 5.0,
-                  //     color: Colors.black,
-                  //   ),
-                  // ],
                 ),
               ),
             ),
@@ -712,7 +759,7 @@ class WeatherDetailScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildHourlyCard(BuildContext context, {required String time, required int temp, required String weather}) {
+  Widget _buildHourlyCard(BuildContext context, {required String time, required int temp, required String weather, required CityWeatherController controller}) {
     return Container(
       width: 70,
       margin: const EdgeInsets.all(8.0),
@@ -734,14 +781,17 @@ class WeatherDetailScreen extends StatelessWidget {
             size: 24,
           ),
           const SizedBox(height: 5),
-          Text(
-            '$temp°',
-            style: const TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
-            ),
-          ),
+          Obx(() {
+            String formattedTemp = controller.formatTemperature(temp);
+            return Text(
+              formattedTemp,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            );
+          }),
           const SizedBox(height: 5),
           Text(
             weather,
@@ -780,15 +830,4 @@ class WeatherDetailScreen extends StatelessWidget {
     }
   }
 }
-
-
-
-
-
-
-
-
-
-
-
 
