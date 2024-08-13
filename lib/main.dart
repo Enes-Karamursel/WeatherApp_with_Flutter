@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:async';
 
 void main() {
   runApp(const MyApp());
@@ -75,9 +76,17 @@ class City {
 class CityWeatherController extends GetxController {
   var cities = <City>[].obs;
   var temperatureUnit = 'Celsius'.obs;
+  Timer? _timer;
 
   CityWeatherController() {
     loadCities();
+    _startAutoRefresh();
+  }
+
+  @override
+  void onClose() {
+    _timer?.cancel();
+    super.onClose();
   }
 
   void setTemperatureUnit(String unit) {
@@ -108,8 +117,9 @@ class CityWeatherController extends GetxController {
       cities.add(city);
       saveCities();
       return true;
+    } else {
+      return false;
     }
-    return false;
   }
 
   void removeCity(int index) {
@@ -134,50 +144,83 @@ class CityWeatherController extends GetxController {
     }
   }
 
+  Future<void> refreshCities() async {
+    for (var i = 0; i < cities.length; i++) {
+      final updatedCityData = await _fetchCityWeather(cities[i].name);
+      if (updatedCityData != null) {
+        cities[i] = City(
+          cities[i].name,
+          updatedCityData['temperature'],
+          updatedCityData['description'],
+          updatedCityData['humidity'],
+          updatedCityData['windSpeed'],
+          updatedCityData['sunrise'],
+          updatedCityData['sunset'],
+          updatedCityData['hourly'] ?? [],
+        );
+      }
+    }
+    saveCities();
+  }
+
+  void _startAutoRefresh() {
+    _timer = Timer.periodic(const Duration(minutes: 10), (timer)
+    {
+      refreshCities();
+    });
+  }
+
   Future<Map<String, dynamic>?> _fetchCityWeather(String cityName) async {
-    final weatherUrl = 'https://api.openweathermap.org/data/2.5/weather?q=$cityName&units=metric&appid=8b222abc8d47cc21c73e5e055b1936a9';
-    final forecastUrl = 'https://api.openweathermap.org/data/2.5/forecast?q=$cityName&units=metric&appid=8b222abc8d47cc21c73e5e055b1936a9';
+    try {
+      final weatherUrl =
+          'https://api.openweathermap.org/data/2.5/weather?q=$cityName&units=metric&appid=8b222abc8d47cc21c73e5e055b1936a9';
+      final forecastUrl =
+          'https://api.openweathermap.org/data/2.5/forecast?q=$cityName&units=metric&appid=8b222abc8d47cc21c73e5e055b1936a9';
 
-    final weatherResponse = await http.get(Uri.parse(weatherUrl));
-    final forecastResponse = await http.get(Uri.parse(forecastUrl));
+      final weatherResponse = await http.get(Uri.parse(weatherUrl));
+      final forecastResponse = await http.get(Uri.parse(forecastUrl));
 
-    if (weatherResponse.statusCode != 200 || forecastResponse.statusCode != 200) {
+      if (weatherResponse.statusCode == 200 && forecastResponse.statusCode == 200) {
+        final weatherData = json.decode(weatherResponse.body);
+        final forecastData = json.decode(forecastResponse.body);
+
+        final temperature = weatherData['main']['temp'].toInt();
+        final description = weatherData['weather'][0]['description'];
+        final humidity = weatherData['main']['humidity'];
+        final windSpeed = weatherData['wind']['speed'].toDouble();
+        final sunrise =
+        DateTime.fromMillisecondsSinceEpoch(weatherData['sys']['sunrise'] * 1000).toLocal().toString();
+        final sunset =
+        DateTime.fromMillisecondsSinceEpoch(weatherData['sys']['sunset'] * 1000).toLocal().toString();
+
+        final hourly = (forecastData['list'] as List).map((entry) {
+          final dateTime = DateTime.parse(entry['dt_txt']).toLocal();
+          final temp = entry['main']['temp'].toInt();
+          final weather = entry['weather'][0]['description'];
+          return {
+            'time': DateFormat('HH:mm').format(dateTime),
+            'temp': temp,
+            'weather': weather,
+          };
+        }).cast<Map<String, dynamic>>().toList();
+
+        return {
+          'temperature': temperature,
+          'description': description,
+          'humidity': humidity,
+          'windSpeed': windSpeed,
+          'sunrise': sunrise,
+          'sunset': sunset,
+          'hourly': hourly,
+        };
+      } else {
+        return null;
+      }
+    } catch (e) {
       return null;
     }
-
-    final weatherData = json.decode(weatherResponse.body);
-    final forecastData = json.decode(forecastResponse.body);
-
-    final temperature = weatherData['main']['temp'].toInt();
-    final description = weatherData['weather'][0]['description'];
-    final humidity = weatherData['main']['humidity'];
-    final windSpeed = weatherData['wind']['speed'].toDouble();
-    final sunrise = DateTime.fromMillisecondsSinceEpoch(weatherData['sys']['sunrise'] * 1000).toLocal().toString();
-    final sunset = DateTime.fromMillisecondsSinceEpoch(weatherData['sys']['sunset'] * 1000).toLocal().toString();
-
-    final hourly = (forecastData['list'] as List).map((entry) {
-      final dateTime = DateTime.parse(entry['dt_txt']).toLocal();
-      final temp = entry['main']['temp'].toInt();
-      final weather = entry['weather'][0]['description'];
-      return {
-        'time': DateFormat('HH:mm').format(dateTime),
-        'temp': temp,
-        'weather': weather,
-      };
-    }).cast<Map<String, dynamic>>().toList();
-
-    return {
-      'temperature': temperature,
-      'description': description,
-      'humidity': humidity,
-      'windSpeed': windSpeed,
-      'sunrise': sunrise,
-      'sunset': sunset,
-      'hourly': hourly,
-    };
   }
 }
-
 
 class Home extends StatelessWidget {
   const Home({super.key});
@@ -188,10 +231,13 @@ class Home extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Weather App', textAlign: TextAlign.left ,style: TextStyle(
-          fontSize: 27,
-          fontWeight: FontWeight.bold,
-        ),
+        title: const Text(
+          'Weather App',
+          textAlign: TextAlign.left,
+          style: TextStyle(
+            fontSize: 27,
+            fontWeight: FontWeight.bold,
+          ),
         ),
         actions: [
           Obx(() {
@@ -209,8 +255,7 @@ class Home extends StatelessWidget {
               onChanged: (newValue) {
                 controller.setTemperatureUnit(newValue ?? 'Celsius');
               },
-              items: <String>['Celsius', 'Fahrenheit']
-                  .map<DropdownMenuItem<String>>((String value) {
+              items: <String>['Celsius', 'Fahrenheit'].map<DropdownMenuItem<String>>((String value) {
                 return DropdownMenuItem<String>(
                   value: value,
                   child: Text(value, style: const TextStyle(color: Colors.black)),
@@ -253,14 +298,15 @@ class Home extends StatelessWidget {
   }
 }
 
-
 class AddCityDialog extends StatefulWidget {
   final CityWeatherController controller;
 
   const AddCityDialog({super.key, required this.controller});
 
   @override
-  _AddCityDialogState createState() => _AddCityDialogState();
+  _AddCityDialogState createState() {
+    return _AddCityDialogState();
+  }
 }
 
 class _AddCityDialogState extends State<AddCityDialog> {
@@ -322,7 +368,6 @@ class _AddCityDialogState extends State<AddCityDialog> {
     );
   }
 }
-
 
 class WeatherCard extends StatelessWidget {
   final City city;
@@ -431,6 +476,7 @@ class WeatherCard extends StatelessWidget {
     );
   }
 }
+
 
 class WeatherDetailScreen extends StatelessWidget {
   final City city;
