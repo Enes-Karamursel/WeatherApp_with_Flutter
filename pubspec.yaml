@@ -82,6 +82,8 @@ flutter:
     - assets/cloudy2.png
     - assets/few_clouds.png
     - assets/cloudy3.png
+    - assets/fahrenheit.png
+    - assets/celsius.png
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/assets-and-images/#resolution-aware
