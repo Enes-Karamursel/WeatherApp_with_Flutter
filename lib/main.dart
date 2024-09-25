@@ -13,11 +13,28 @@ void main() {
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
+
   @override
   Widget build(BuildContext context) {
-    return const GetMaterialApp(
-      home: Home(),
-    );
+    final ThemeController themeController = Get.put(ThemeController());
+
+    return Obx(() {
+      return GetMaterialApp(
+        theme: ThemeData.light(), // Light mode
+        darkTheme: ThemeData.dark(), // Dark mode
+        themeMode: themeController.isDarkMode.value ? ThemeMode.dark : ThemeMode.light,
+        home: const Home(),
+      );
+    });
+  }
+}
+
+class ThemeController extends GetxController {
+  var isDarkMode = false.obs;
+
+  void toggleTheme() {
+    isDarkMode.value = !isDarkMode.value;
+    Get.changeThemeMode(isDarkMode.value ? ThemeMode.dark : ThemeMode.light);
   }
 }
 
@@ -160,11 +177,13 @@ class CityWeatherController extends GetxController {
         );
       }
     }
+    cities.refresh();
     saveCities();
   }
 
+
   void _startAutoRefresh() {
-    _timer = Timer.periodic(const Duration(minutes: 10), (timer)
+    _timer = Timer.periodic(const Duration(minutes: 5), (timer)
     {
       refreshCities();
     });
@@ -227,13 +246,13 @@ class Home extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final CityWeatherController controller = Get.put(CityWeatherController());
+    final CityWeatherController cityController = Get.put(CityWeatherController());
+    final ThemeController themeController = Get.find();
 
     return Scaffold(
       appBar: AppBar(
         title: const Text(
           'Weather App',
-          textAlign: TextAlign.left,
           style: TextStyle(
             fontSize: 27,
             fontWeight: FontWeight.bold,
@@ -241,34 +260,68 @@ class Home extends StatelessWidget {
         ),
         actions: [
           Obx(() {
-            return DropdownButton<String>(
-              hint: const Text(
-                'Select Unit ',
-                style: TextStyle(color: Colors.black),
-              ),
-              icon: const Icon(Icons.sunny_snowing, color: Colors.black),
-              underline: Container(
-                height: 1.5,
-                color: Colors.black,
-              ),
-              value: controller.temperatureUnit.value.isEmpty ? null : controller.temperatureUnit.value,
-              onChanged: (newValue) {
-                controller.setTemperatureUnit(newValue ?? 'Celsius');
+            Color textColor = themeController.isDarkMode.value ? Colors.white : Colors.black;
+            return PopupMenuButton<int>(
+              icon: Icon(Icons.more_vert, color: themeController.isDarkMode.value ? Colors.white : Colors.black),
+              onSelected: (value) {
+                if (value == 0) {
+                  // Toggle Celsius-Fahrenheit
+                  cityController.setTemperatureUnit(
+                    cityController.temperatureUnit.value == 'Celsius' ? 'Fahrenheit' : 'Celsius',
+                  );
+                } else if (value == 1) {
+                  // Toggle Dark-Light Mode
+                  themeController.toggleTheme();
+                }
               },
-              items: <String>['Celsius', 'Fahrenheit'].map<DropdownMenuItem<String>>((String value) {
-                return DropdownMenuItem<String>(
-                  value: value,
-                  child: Text(value, style: const TextStyle(color: Colors.black)),
-                );
-              }).toList(),
+              itemBuilder: (context) => [
+                PopupMenuItem(
+                  value: 0,
+                  child: Obx(() {
+                    return Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Icon(Icons.thermostat),
+                        Switch(
+                          value: cityController.temperatureUnit.value == 'Fahrenheit',
+                          onChanged: (value) {
+                            cityController.setTemperatureUnit(value ? 'Fahrenheit' : 'Celsius');
+                          },
+                          activeThumbImage: const AssetImage('assets/fahrenheit.png'),
+                          inactiveThumbImage: const AssetImage('assets/celsius.png'),
+                        ),
+                      ],
+                    );
+                  }),
+                ),
+                PopupMenuItem(
+                  value: 1,
+                  child: Obx(() {
+                    return Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Icon(Icons.brightness_6, color: textColor), // Light-Dark Mode için simge
+                        Switch(
+                          value: themeController.isDarkMode.value,
+                          onChanged: (value) {
+                            themeController.toggleTheme();
+                          },
+                          activeColor: Colors.black, // Dark Mode için siyah
+                          inactiveThumbColor: Colors.white, // Light Mode için beyaz
+                        ),
+                      ],
+                    );
+                  }),
+                ),
+              ],
             );
           }),
         ],
       ),
       body: Obx(() => ListView.builder(
-        itemCount: controller.cities.length,
+        itemCount: cityController.cities.length,
         itemBuilder: (context, index) {
-          final city = controller.cities[index];
+          final city = cityController.cities[index];
           return GestureDetector(
             onTap: () {
               Get.to(() => WeatherDetailScreen(city: city));
@@ -276,27 +329,34 @@ class Home extends StatelessWidget {
             child: WeatherCard(
               city: city,
               onDelete: () {
-                controller.removeCity(index);
+                cityController.removeCity(index);
               },
             ),
           );
         },
       )),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          showDialog(
-            context: context,
-            builder: (context) {
-              return AddCityDialog(controller: controller);
-            },
-          );
-        },
-        backgroundColor: Colors.black,
-        child: const Icon(Icons.add, color: Colors.white),
-      ),
+      floatingActionButton: Obx(() {
+        Color buttonColor = themeController.isDarkMode.value ? Colors.white : Colors.black;
+        Color iconColor = themeController.isDarkMode.value ? Colors.black : Colors.white;
+
+        return FloatingActionButton(
+          onPressed: () {
+            showDialog(
+              context: context,
+              builder: (context) {
+                return AddCityDialog(controller: cityController);
+              },
+            );
+          },
+          backgroundColor: buttonColor,
+          child: Icon(Icons.add, color: iconColor),
+        );
+      }),
     );
   }
 }
+
+
 
 class AddCityDialog extends StatefulWidget {
   final CityWeatherController controller;
@@ -332,23 +392,32 @@ class _AddCityDialogState extends State<AddCityDialog> {
       actions: [
         ElevatedButton(
           onPressed: () async {
-            final cityName = _controller.text;
+            final cityName = _controller.text.trim();
             if (cityName.isNotEmpty) {
-              final isValid = await widget.controller.addCity(cityName);
-              if (isValid) {
-                Get.back();
-                Get.snackbar(
-                  'Success',
-                  'City is added successfully!',
-                  snackPosition: SnackPosition.TOP,
-                  backgroundColor: Colors.green,
-                  colorText: Colors.white,
-                  duration: const Duration(seconds: 1),
-                );
-              } else {
+
+              final alreadyExists = widget.controller.cities.any((city) => city.name.toLowerCase() == cityName.toLowerCase());
+
+              if (alreadyExists) {
                 setState(() {
-                  errorMessage = 'Invalid city name. Please try again.';
+                  errorMessage = 'City is already added. ';
                 });
+              } else {
+                final isValid = await widget.controller.addCity(cityName);
+                if (isValid) {
+                  Get.back();
+                  Get.snackbar(
+                    'Success',
+                    'City is added successfully!',
+                    snackPosition: SnackPosition.TOP,
+                    backgroundColor: Colors.green,
+                    colorText: Colors.white,
+                    duration: const Duration(seconds: 1),
+                  );
+                } else {
+                  setState(() {
+                    errorMessage = 'Invalid city name. Please try again.';
+                  });
+                }
               }
             }
           },
@@ -369,10 +438,12 @@ class _AddCityDialogState extends State<AddCityDialog> {
   }
 }
 
+
 class WeatherCard extends StatelessWidget {
   final City city;
   final VoidCallback onDelete;
   final CityWeatherController controller = Get.find();
+  final ThemeController themeController = Get.find();
 
   WeatherCard({
     super.key,
@@ -528,6 +599,8 @@ class WeatherDetailScreen extends StatelessWidget {
     final currentHour = DateTime.now().hour;
 
     // Get the next 24 hourly data starting from current hour
+
+
     List<Map<String, dynamic>> next24Hours = [];
     for (int i = 0; i < city.hourly.length; i++) {
       final hourData = city.hourly[i];
@@ -573,7 +646,7 @@ class WeatherDetailScreen extends StatelessWidget {
 
                     return Column(
                       children: [
-                        const SizedBox(height: 20),
+                        const SizedBox(height: 35),
                         Text(
                           temperature,
                           style: const TextStyle(
@@ -624,8 +697,8 @@ class WeatherDetailScreen extends StatelessWidget {
                         Text(
                           city.name,
                           style: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w600,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 28,
                             color: Colors.white,
                             letterSpacing: 1.1,
                             shadows: [
@@ -638,7 +711,6 @@ class WeatherDetailScreen extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: 40),
-                        // Bilgileri card şeklinde göster
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 16.0),
                           child: Column(
@@ -739,7 +811,7 @@ class WeatherDetailScreen extends StatelessWidget {
             ),
           ),
           Positioned(
-            top: 40,
+            top: 47,
             left: 16,
             child: IconButton(
               icon: const Icon(Icons.arrow_back, color: Colors.white, size: 30),
@@ -749,7 +821,7 @@ class WeatherDetailScreen extends StatelessWidget {
             ),
           ),
           const Positioned(
-            top: 42,
+            top: 50,
             left: 50,
             right: 50,
             child: Center(
